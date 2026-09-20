@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:speech_to_text/speech_to_text.dart';
 import 'package:dio/dio.dart';
@@ -78,9 +79,9 @@ class VoiceNotifier extends StateNotifier<VoiceState> {
       if (available) {
         try {
           var locales = await _speech.locales();
-          print("Supported Locales: ${locales.map((e) => e.localeId).toList()}");
+          debugPrint("Supported Locales: ${locales.map((e) => e.localeId).toList()}");
         } catch (e) {
-          print("Gagal ambil list bahasa: $e");
+          debugPrint("Gagal ambil list bahasa: $e");
         }
       } else {
         state = state.copyWith(statusMessage: 'STT tidak tersedia di sistem ini');
@@ -104,7 +105,7 @@ class VoiceNotifier extends StateNotifier<VoiceState> {
         localeToUse = 'id_ID';
       }
     } catch (e) {
-      print("Gagal ambil locales, pake default: $e");
+      debugPrint("Gagal ambil locales, pake default: $e");
     }
 
     await _speech.listen(
@@ -189,8 +190,8 @@ class VoiceNotifier extends StateNotifier<VoiceState> {
       );
 
       if (response.data['success'] == true) {
-        print('FULL RESPONSE: ${response.data}');
-        print('QTY TERJUAL: ${response.data['qty_terjual']}');
+        debugPrint('FULL RESPONSE: ${response.data}');
+        debugPrint('QTY TERJUAL: ${response.data['qty_terjual']}');
         state = state.copyWith(
           initialStock: initialStock,
           qtyTerjual: int.tryParse(

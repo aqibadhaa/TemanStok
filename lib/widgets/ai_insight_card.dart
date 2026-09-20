@@ -78,7 +78,7 @@ class WeeklyInsightCard extends StatelessWidget {
                     children: [
                       Icon(
                         Icons.emoji_events_outlined,
-                        color: AppTheme.primary.withOpacity(opacity),
+                        color: AppTheme.primary.withValues(alpha: opacity),
                         size: iconSize,
                       ),
                       const SizedBox(height: 4),
@@ -111,7 +111,7 @@ class WeeklyInsightCard extends StatelessWidget {
             Container(
               padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
               decoration: BoxDecoration(
-                color: AppTheme.statusKritis.withOpacity(0.08),
+                color: AppTheme.statusKritis.withValues(alpha: 0.08),
                 borderRadius: BorderRadius.circular(8),
               ),
               child: Row(

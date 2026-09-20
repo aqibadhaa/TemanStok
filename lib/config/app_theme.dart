@@ -63,7 +63,6 @@ class AppTheme {
         seedColor: primary,
         primary: primary,
         secondary: primaryLight,
-        background: background,
         surface: surface,
       ),
       textTheme: GoogleFonts.interTextTheme().copyWith(

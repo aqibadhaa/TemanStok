@@ -184,7 +184,7 @@ class _MicScreenState extends ConsumerState<MicScreen> with SingleTickerProvider
                 Container(
                   padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
                   decoration: BoxDecoration(
-                    color: Colors.white.withOpacity(0.08),
+                    color: Colors.white.withValues(alpha: 0.08),
                     borderRadius: BorderRadius.circular(20),
                   ),
                   child: Text(
@@ -225,7 +225,7 @@ class _MicScreenState extends ConsumerState<MicScreen> with SingleTickerProvider
                         color: const Color(0xFF1A2F45),
                         boxShadow: [
                           BoxShadow(
-                            color: AppTheme.primary.withOpacity(voiceState.isListening ? 0.6 : 0.0),
+                            color: AppTheme.primary.withValues(alpha: voiceState.isListening ? 0.6 : 0.0),
                             blurRadius: 16,
                             spreadRadius: glow,
                           ),
@@ -276,7 +276,7 @@ class _MicScreenState extends ConsumerState<MicScreen> with SingleTickerProvider
                   width: double.infinity,
                   padding: const EdgeInsets.all(16),
                   decoration: BoxDecoration(
-                    color: Colors.white.withOpacity(0.05),
+                    color: Colors.white.withValues(alpha: 0.05),
                     borderRadius: BorderRadius.circular(12),
                     border: Border.all(color: Colors.white12),
                   ),
