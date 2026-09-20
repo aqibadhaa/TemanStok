@@ -4,6 +4,7 @@ import 'package:fl_chart/fl_chart.dart';
 import '../config/app_theme.dart';
 import '../providers/ai_provider.dart';
 import '../widgets/ai_insight_card.dart';
+import '../widgets/async_error_view.dart';
 
 class AIScreen extends ConsumerWidget {
   const AIScreen({super.key});
@@ -205,7 +206,7 @@ class AIScreen extends ConsumerWidget {
           barRods: [
             BarChartRodData(
               toY: itemsSold.toDouble(),
-              color: AppTheme.primary.withOpacity(0.8),
+              color: AppTheme.primary.withValues(alpha: 0.8),
               width: 12,
               borderRadius: const BorderRadius.only(
                 topLeft: Radius.circular(4),
@@ -325,7 +326,7 @@ class AIScreen extends ConsumerWidget {
                               style: AppTheme.caption,
                             ),
                             loading: () => const SizedBox(),
-                            error: (e, s) => const SizedBox(),
+                            error: (e, s) => AsyncErrorView(error: e, compact: true),
                           ),
                         ],
                       ),
@@ -444,7 +445,10 @@ class AIScreen extends ConsumerWidget {
                     ),
                   ),
                   error: (e, s) => Center(
-                    child: Text('Error loading AI insights: $e'),
+                    child: AsyncErrorView(
+                      error: e,
+                      onRetry: () => ref.invalidate(aiInsightsProvider),
+                    ),
                   ),
                 ),
               ],

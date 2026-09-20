@@ -1,11 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:shared_preferences/shared_preferences.dart';
 import 'package:google_fonts/google_fonts.dart';
-import '../config/app_theme.dart';
 import '../providers/ai_provider.dart';
 import '../providers/session_provider.dart';
+import '../widgets/async_error_view.dart';
 
 class ProfilScreen extends ConsumerWidget {
   const ProfilScreen({super.key});
@@ -23,22 +21,7 @@ class ProfilScreen extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final storeInfoAsync = ref.watch(storeInfoProvider);
     final inventoryAsync = ref.watch(inventoryProvider);
-
-    // Fetch transactions count asynchronously
-    final txCountFuture = ref.watch(FutureProvider<int>((ref) async {
-      final session = ref.watch(sessionProvider);
-      String storeId = session ?? '';
-      if (storeId.isEmpty) {
-        final prefs = await SharedPreferences.getInstance();
-        storeId = prefs.getString('store_id') ?? 'warung_test_001';
-      }
-      final snap = await FirebaseFirestore.instance
-          .collection('stores')
-          .doc(storeId)
-          .collection('transactions')
-          .get();
-      return snap.docs.length;
-    }));
+    final txCountAsync = ref.watch(transactionCountProvider);
 
     return Scaffold(
       backgroundColor: const Color(0xFFF3F4F6), // Light grey background
@@ -192,7 +175,10 @@ class ProfilScreen extends ConsumerWidget {
                   );
                 },
                 loading: () => const Center(child: CircularProgressIndicator(color: Colors.white)),
-                error: (e, s) => Text('Error loading profile: $e', style: const TextStyle(color: Colors.white)),
+                error: (e, s) => AsyncErrorView(
+                  error: e,
+                  onRetry: () => ref.invalidate(storeInfoProvider),
+                ),
               ),
             ),
 
@@ -218,12 +204,18 @@ class ProfilScreen extends ConsumerWidget {
                     mainAxisAlignment: MainAxisAlignment.spaceAround,
                     children: [
                       _buildStatColumn(
-                        txCountFuture.value?.toString() ?? '186',
+                        txCountAsync.maybeWhen(
+                              data: (v) => v.toString(),
+                              orElse: () => '-',
+                            ),
                         'Transaksi',
                       ),
                       _buildDivider(),
                       _buildStatColumn(
-                        inventoryAsync.value?.length.toString() ?? '24',
+                        inventoryAsync.maybeWhen(
+                              data: (v) => v.length.toString(),
+                              orElse: () => '-',
+                            ),
                         'Barang',
                       ),
                       _buildDivider(),
@@ -293,7 +285,10 @@ class ProfilScreen extends ConsumerWidget {
                         );
                       },
                       loading: () => const Center(child: Padding(padding: EdgeInsets.all(16.0), child: CircularProgressIndicator())),
-                      error: (e, s) => const SizedBox(),
+                      error: (e, s) => AsyncErrorView(
+                        error: e,
+                        onRetry: () => ref.invalidate(storeInfoProvider),
+                      ),
                     ),
                   ),
                   const SizedBox(height: 24),

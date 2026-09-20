@@ -3,14 +3,18 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'session_provider.dart';
+import '../utils/app_exceptions.dart';
 
 // 1. Store info provider (dari Firestore)
 final storeInfoProvider = StreamProvider<Map<String, dynamic>>((ref) async* {
   final session = ref.watch(sessionProvider);
-  String storeId = session ?? '';
-  if (storeId.isEmpty) {
+  String? storeId = session;
+  if (storeId == null || storeId.isEmpty) {
     final prefs = await SharedPreferences.getInstance();
-    storeId = prefs.getString('store_id') ?? 'warung_test_001';
+    storeId = prefs.getString('store_id');
+  }
+  if (storeId == null || storeId.isEmpty) {
+    throw const SessionExpiredException();
   }
   yield* FirebaseFirestore.instance
       .collection('stores')
@@ -22,8 +26,12 @@ final storeInfoProvider = StreamProvider<Map<String, dynamic>>((ref) async* {
 // 2. Inventory provider (real-time)
 final inventoryProvider = StreamProvider<List<Map<String, dynamic>>>((ref) async* {
   final prefs = await SharedPreferences.getInstance();
-  final storeId = prefs.getString('store_id') ?? '';
-  if (storeId.isEmpty) yield* const Stream.empty();
+  final storeId = prefs.getString('store_id');
+  if (storeId == null || storeId.isEmpty) {
+    // Sebelumnya: yield* Stream.empty() tanpa return, tetap lanjut ke
+    // .doc('') di bawah dan crash. Sekarang throw, mengakhiri fungsi.
+    throw const SessionExpiredException();
+  }
 
   yield* FirebaseFirestore.instance
       .collection('stores')
@@ -74,8 +82,10 @@ final inventoryProvider = StreamProvider<List<Map<String, dynamic>>>((ref) async
 // 3. Recent transactions provider
 final recentTransactionsProvider = StreamProvider<List<Map<String, dynamic>>>((ref) async* {
   final prefs = await SharedPreferences.getInstance();
-  final storeId = prefs.getString('store_id') ?? '';
-  if (storeId.isEmpty) yield* const Stream.empty();
+  final storeId = prefs.getString('store_id');
+  if (storeId == null || storeId.isEmpty) {
+    throw const SessionExpiredException();
+  }
 
   yield* FirebaseFirestore.instance
       .collection('stores')
@@ -105,9 +115,10 @@ final recentTransactionsProvider = StreamProvider<List<Map<String, dynamic>>>((r
 // 4. AI insights provider (computed dari transactions)
 final aiInsightsProvider = FutureProvider<Map<String, dynamic>>((ref) async {
   final prefs = await SharedPreferences.getInstance();
-  final storeId = prefs.getString('store_id') ?? '';
-  print('AI Provider storeId: $storeId');
-  if (storeId.isEmpty) return {};
+  final storeId = prefs.getString('store_id');
+  if (storeId == null || storeId.isEmpty) {
+    throw const SessionExpiredException();
+  }
 
   final db = FirebaseFirestore.instance;
 
@@ -328,7 +339,27 @@ String _getMonthName(int month) {
   return names[index];
 }
 
-// 5. Kulaan checklist provider (dari SharedPreferences — offline first)
+// 5. Transaction count provider (dipakai profil_screen)
+// Sebelumnya didefinisikan inline di dalam build() lewat FutureProvider
+// anonim, yang bikin provider baru dibuat ulang setiap rebuild (gak pernah
+// di-cache Riverpod dengan benar) dan punya fallback 'warung_test_001'
+// sendiri. Dipindah ke top-level, pola sama dengan provider lain di atas.
+final transactionCountProvider = FutureProvider<int>((ref) async {
+  final prefs = await SharedPreferences.getInstance();
+  final storeId = prefs.getString('store_id');
+  if (storeId == null || storeId.isEmpty) {
+    throw const SessionExpiredException();
+  }
+
+  final snap = await FirebaseFirestore.instance
+      .collection('stores')
+      .doc(storeId)
+      .collection('transactions')
+      .get();
+  return snap.docs.length;
+});
+
+// 6. Kulaan checklist provider (dari SharedPreferences — offline first)
 class KulaanItem {
   final String name;
   final int qty;

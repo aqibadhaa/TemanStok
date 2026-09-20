@@ -4,6 +4,8 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import '../config/app_theme.dart';
 import '../providers/ai_provider.dart';
 import '../providers/session_provider.dart';
+import '../utils/app_exceptions.dart';
+import '../widgets/async_error_view.dart';
 import '../widgets/stok_item_card.dart';
 
 class StokScreen extends ConsumerStatefulWidget {
@@ -75,10 +77,13 @@ class _StokScreenState extends ConsumerState<StokScreen> {
                 }
 
                 Navigator.pop(context);
+                final messenger = ScaffoldMessenger.of(context);
 
                 try {
-                  final session = ref.read(sessionProvider);
-                  final storeId = session ?? 'warung_test_001';
+                  final storeId = ref.read(sessionProvider);
+                  if (storeId == null || storeId.isEmpty) {
+                    throw const SessionExpiredException();
+                  }
                   await FirebaseFirestore.instance
                       .collection('stores')
                       .doc(storeId)
@@ -90,11 +95,19 @@ class _StokScreenState extends ConsumerState<StokScreen> {
                         'max_stock': stock * 2,
                         'last_updated': Timestamp.now(),
                       });
-                  ScaffoldMessenger.of(context).showSnackBar(
+                  messenger.showSnackBar(
                     const SnackBar(content: Text('✅ Barang berhasil ditambahkan!'), backgroundColor: AppTheme.primary),
                   );
+                } on SessionExpiredException {
+                  // Sebelumnya diam-diam fallback ke 'warung_test_001' kalau
+                  // sesi kosong — sekarang tolak dan paksa masuk ulang,
+                  // supaya data barang gak nyasar ke dokumen bareng.
+                  if (mounted) {
+                    Navigator.of(this.context)
+                        .pushNamedAndRemoveUntil('/phone_login', (route) => false);
+                  }
                 } catch (e) {
-                  ScaffoldMessenger.of(context).showSnackBar(
+                  messenger.showSnackBar(
                     SnackBar(content: Text('❌ Gagal menambahkan: $e'), backgroundColor: AppTheme.statusKritis),
                   );
                 }
@@ -147,10 +160,13 @@ class _StokScreenState extends ConsumerState<StokScreen> {
                 }
 
                 Navigator.pop(context);
+                final messenger = ScaffoldMessenger.of(context);
 
                 try {
-                  final session = ref.read(sessionProvider);
-                  final storeId = session ?? 'warung_test_001';
+                  final storeId = ref.read(sessionProvider);
+                  if (storeId == null || storeId.isEmpty) {
+                    throw const SessionExpiredException();
+                  }
                   await FirebaseFirestore.instance
                       .collection('stores')
                       .doc(storeId)
@@ -160,11 +176,16 @@ class _StokScreenState extends ConsumerState<StokScreen> {
                         'stock': stock,
                         'last_updated': Timestamp.now(),
                       });
-                  ScaffoldMessenger.of(context).showSnackBar(
+                  messenger.showSnackBar(
                     const SnackBar(content: Text('✅ Stok berhasil diupdate!'), backgroundColor: AppTheme.primary),
                   );
+                } on SessionExpiredException {
+                  if (mounted) {
+                    Navigator.of(this.context)
+                        .pushNamedAndRemoveUntil('/phone_login', (route) => false);
+                  }
                 } catch (e) {
-                  ScaffoldMessenger.of(context).showSnackBar(
+                  messenger.showSnackBar(
                     SnackBar(content: Text('❌ Gagal update: $e'), backgroundColor: AppTheme.statusKritis),
                   );
                 }
@@ -362,7 +383,12 @@ class _StokScreenState extends ConsumerState<StokScreen> {
                     );
                   },
                   loading: () => const Center(child: CircularProgressIndicator()),
-                  error: (e, s) => Center(child: Text('Error loading inventory: $e')),
+                  error: (e, s) => Center(
+                    child: AsyncErrorView(
+                      error: e,
+                      onRetry: () => ref.invalidate(inventoryProvider),
+                    ),
+                  ),
                 ),
               ),
             ],

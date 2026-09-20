@@ -5,6 +5,7 @@ import '../config/app_theme.dart';
 import '../providers/ai_provider.dart';
 import '../widgets/summary_card.dart';
 import '../widgets/transaksi_item.dart';
+import '../widgets/async_error_view.dart';
 
 // Shared tab index provider for global tab navigation control
 final tabIndexProvider = StateProvider<int>((ref) => 0);
@@ -113,7 +114,10 @@ class HomeScreen extends ConsumerWidget {
                     );
                   },
                   loading: () => const LinearProgressIndicator(),
-                  error: (e, s) => Text('Error loading profile: $e', style: const TextStyle(color: Colors.red)),
+                  error: (e, s) => AsyncErrorView(
+                    error: e,
+                    onRetry: () => ref.invalidate(storeInfoProvider),
+                  ),
                 ),
                 const SizedBox(height: 24),
 
@@ -123,8 +127,14 @@ class HomeScreen extends ConsumerWidget {
                     final totalJenis = inventory.length;
                     final criticalCount = inventory.where((item) => item['status'] == 'kritis').length;
                     
-                    final recentCount = transactionsAsync.value?.length ?? 0;
-                    final aiSaranCount = aiInsightsAsync.value?['rencana_kulaan']?.length ?? 2;
+                    final recentCount = transactionsAsync.maybeWhen(
+                      data: (d) => d.length,
+                      orElse: () => null,
+                    );
+                    final aiSaranCount = aiInsightsAsync.maybeWhen(
+                      data: (d) => (d['rencana_kulaan'] as List?)?.length,
+                      orElse: () => null,
+                    );
 
                     return Column(
                       children: [
@@ -152,13 +162,13 @@ class HomeScreen extends ConsumerWidget {
                           children: [
                             SummaryCard(
                               label: 'Transaksi',
-                              value: recentCount.toString(),
+                              value: recentCount?.toString() ?? '-',
                               valueColor: AppTheme.textPrimary,
                             ),
                             const SizedBox(width: 12),
                             SummaryCard(
                               label: 'Saran AI',
-                              value: aiSaranCount.toString(),
+                              value: aiSaranCount?.toString() ?? '-',
                               valueColor: AppTheme.primary,
                               onTap: () {
                                 // Go to AI tab
@@ -171,7 +181,10 @@ class HomeScreen extends ConsumerWidget {
                     );
                   },
                   loading: () => const Center(child: CircularProgressIndicator()),
-                  error: (e, s) => Text('Error loading inventory: $e'),
+                  error: (e, s) => AsyncErrorView(
+                    error: e,
+                    onRetry: () => ref.invalidate(inventoryProvider),
+                  ),
                 ),
                 const SizedBox(height: 24),
 
@@ -237,7 +250,10 @@ class HomeScreen extends ConsumerWidget {
                     );
                   },
                   loading: () => const Center(child: CircularProgressIndicator()),
-                  error: (e, s) => Text('Error loading transactions: $e'),
+                  error: (e, s) => AsyncErrorView(
+                    error: e,
+                    onRetry: () => ref.invalidate(recentTransactionsProvider),
+                  ),
                 ),
                 const SizedBox(height: 32),
               ],
