@@ -6,6 +6,7 @@ import 'package:google_fonts/google_fonts.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 import '../../config/app_theme.dart';
 import '../../providers/onboarding_provider.dart';
+import '../../utils/phone_utils.dart';
 import '../services/auth_service.dart';
 
 class RegisterOtpScreen extends ConsumerStatefulWidget {
@@ -22,7 +23,6 @@ class _RegisterOtpScreenState extends ConsumerState<RegisterOtpScreen> {
 
   bool _isLoading = false;
   bool _otpSent = false;
-  String? _generatedOtp;
   String _otpCode = '';
 
   // Timer fields
@@ -52,42 +52,12 @@ class _RegisterOtpScreenState extends ConsumerState<RegisterOtpScreen> {
     });
   }
 
-  String _sanitizePhone(String phone) {
-    phone = phone
-        .trim()
-        .replaceAll('+', '')
-        .replaceAll('-', '')
-        .replaceAll(' ', '');
-    if (phone.startsWith('0')) {
-      phone = '62${phone.substring(1)}';
-    } else if (!phone.startsWith('62')) {
-      phone = '62$phone';
-    }
-    return phone;
-  }
-
-  String _formatDisplayPhone(String phone) {
-    // Format to display like +62 812-xxxx-xxxx
-    final sanitized = _sanitizePhone(phone);
-    if (sanitized.startsWith('62') && sanitized.length > 2) {
-      final code = '+62';
-      final mainNumber = sanitized.substring(2);
-      if (mainNumber.length > 3) {
-        final part1 = mainNumber.substring(0, 3);
-        final part2 = mainNumber.substring(3);
-        return '$code $part1-$part2';
-      }
-      return '$code $mainNumber';
-    }
-    return phone;
-  }
-
   Future<void> _sendOtp() async {
     if (!_formKey.currentState!.validate()) return;
     setState(() => _isLoading = true);
 
     final rawPhone = _phoneController.text.trim();
-    final storeId = _sanitizePhone(rawPhone);
+    final storeId = sanitizePhone(rawPhone);
 
     try {
       // 1. Cek dulu apakah nomor sudah terdaftar di stores
@@ -104,10 +74,9 @@ class _RegisterOtpScreenState extends ConsumerState<RegisterOtpScreen> {
         return;
       }
 
-      // 2. Jika belum terdaftar, kirim OTP
-      final code = await _authService.sendWhatsAppOtp(storeId);
+      // 2. Jika belum terdaftar, kirim OTP lewat server (n8n)
+      await _authService.requestOtp(storeId);
       setState(() {
-        _generatedOtp = code;
         _otpSent = true;
         _otpCode = '';
       });
@@ -130,16 +99,24 @@ class _RegisterOtpScreenState extends ConsumerState<RegisterOtpScreen> {
       return;
     }
 
-    if (_otpCode != _generatedOtp) {
-      _showSnackBar('Kode OTP salah!', isError: true);
-      return;
-    }
-
     setState(() => _isLoading = true);
 
     try {
       final rawPhone = _phoneController.text.trim();
-      final storeId = _sanitizePhone(rawPhone);
+      final storeId = sanitizePhone(rawPhone);
+
+      // Verifikasi ke server. Kalau valid, AuthService juga langsung
+      // signInWithCustomToken di baliknya, jadi FirebaseAuth.currentUser
+      // sudah ke-set begitu ini return true.
+      final isValid = await _authService.verifyOtp(storeId, _otpCode);
+
+      if (!isValid) {
+        if (mounted) {
+          _showSnackBar('Kode OTP salah!', isError: true);
+          setState(() => _otpCode = '');
+        }
+        return;
+      }
 
       // Simpan nomor ke onboardingProvider
       ref.read(onboardingProvider.notifier).updatePhoneNumber(storeId);
@@ -335,7 +312,7 @@ class _RegisterOtpScreenState extends ConsumerState<RegisterOtpScreen> {
   }
 
   Widget _buildOtpBody() {
-    final displayPhone = _formatDisplayPhone(_phoneController.text.trim());
+    final displayPhone = formatDisplayPhone(_phoneController.text.trim());
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,

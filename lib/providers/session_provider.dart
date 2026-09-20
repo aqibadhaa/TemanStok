@@ -1,4 +1,5 @@
 // lib/providers/session_provider.dart
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -19,6 +20,10 @@ class SessionNotifier extends StateNotifier<String?> {
   Future<void> clearSession() async {
     final prefs = await SharedPreferences.getInstance();
     await prefs.remove('store_id');
+    // Cabut juga sesi Firebase Auth (dibuat lewat signInWithCustomToken
+    // pasca-OTP) — tanpa ini, token yang mengikat identitas tetap hidup
+    // di device meski SharedPreferences sudah dibersihkan.
+    await FirebaseAuth.instance.signOut();
     state = null;
   }
 }

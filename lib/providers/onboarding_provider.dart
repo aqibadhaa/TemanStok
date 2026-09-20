@@ -1,6 +1,7 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import '../utils/phone_utils.dart';
 
 class OnboardingItem {
   final String name;
@@ -58,19 +59,6 @@ class OnboardingNotifier extends StateNotifier<OnboardingState> {
           items: List.generate(5, (_) => OnboardingItem(name: '', stock: 0)),
         ));
 
-  String _sanitizePhone(String phone) {
-    phone = phone.trim()
-        .replaceAll('+', '')
-        .replaceAll('-', '')
-        .replaceAll(' ', '');
-    if (phone.startsWith('0')) {
-      phone = '62${phone.substring(1)}';
-    } else if (!phone.startsWith('62')) {
-      phone = '62$phone';
-    }
-    return phone;
-  }
-
   void updatePhoneNumber(String phone) {
     state = state.copyWith(phoneNumber: phone);
   }
@@ -106,7 +94,7 @@ class OnboardingNotifier extends StateNotifier<OnboardingState> {
   Future<void> submit() async {
   state = state.copyWith(isLoading: true, errorMessage: null);
 
-  final storeId = _sanitizePhone(state.phoneNumber);
+  final storeId = sanitizePhone(state.phoneNumber);
   final db = FirebaseFirestore.instance;
 
   try {

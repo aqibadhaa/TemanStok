@@ -1,0 +1,47 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // Satu warung = satu dokumen store, dengan document ID yang sama
+    // dengan uid Firebase Auth. uid dibuat dari nomor telepon tersanitasi
+    // (storeId) saat n8n mint custom token pasca-verifikasi OTP.
+    function isOwner(storeId) {
+      return request.auth != null && request.auth.uid == storeId;
+    }
+
+    match /stores/{storeId} {
+      allow read, write: if isOwner(storeId);
+
+      // Semua subcollection di bawah store (inventory, transactions,
+      // dan apa pun yang ditambahkan nanti) ikut aturan yang sama:
+      // hanya pemilik store yang bisa akses. Pakai wildcard rekursif
+      // supaya subcollection baru di masa depan otomatis terlindungi
+      // tanpa perlu update file ini lagi.
+      match /{document=**} {
+        allow read, write: if isOwner(storeId);
+      }
+    }
+
+    // Ditulis dan dibaca hanya oleh n8n lewat Firebase Admin SDK, yang
+    // selalu bypass security rules. Diblokir total dari sisi client
+    // supaya state OTP (hash kode, expiry, status dipakai/belum) tidak
+    // pernah bisa diakses langsung lewat Firestore SDK atau REST API.
+    match /otp_verifications/{document=**} {
+      allow read, write: if false;
+    }
+
+    // Sisa dari fase awal hackathon: auth_service.dart versi lama sempat
+    // query koleksi ini (isPhoneRegistered) sebelum tim pindah ke alur
+    // store_id + OTP WhatsApp. Tidak dipakai oleh alur aktif mana pun
+    // saat ini. Diblokir eksplisit, bukan dibiarkan kena default-deny,
+    // supaya jelas ini keputusan sadar buat siapa pun yang baca file ini
+    // belakangan.
+    match /users/{document=**} {
+      allow read, write: if false;
+    }
+
+    // Path apa pun di luar yang didefinisikan di atas otomatis ditolak
+    // oleh default-deny rules_version 2 — tidak perlu match tambahan.
+  }
+}

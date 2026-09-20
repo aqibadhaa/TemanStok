@@ -1,123 +1,99 @@
 import 'dart:convert';
-import 'dart:math';
 import 'package:firebase_auth/firebase_auth.dart';
-import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:http/http.dart' as http;
-import 'package:shared_preferences/shared_preferences.dart';
 
-import '../config/secrets.dart';
+import '../../config/api_config.dart';
 
 class AuthService {
   final FirebaseAuth _auth = FirebaseAuth.instance;
-  final FirebaseFirestore _db = FirebaseFirestore.instance;
-
-  // Mengambil API Key dari file terpisah yang di-ignore oleh Git
-  final String _waApiKey = AppSecrets.waApiKey; 
-
-  // Simpan status login ke SharedPreferences
-  Future<void> _setLoginStatus(bool isLoggedIn) async {
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.setBool('isLoggedIn', isLoggedIn);
-  }
-
-  // Cek apakah user sudah login sebelumnya
-  Future<bool> checkLoginStatus() async {
-    final prefs = await SharedPreferences.getInstance();
-    return prefs.getBool('isLoggedIn') ?? false;
-  }
-
-  // 0. Cek apakah nomor sudah terdaftar di Firestore
-  Future<bool> isPhoneRegistered(String phone) async {
-    final query = await _db
-        .collection('users')
-        .where('phone', isEqualTo: phone)
-        .limit(1)
-        .get();
-    return query.docs.isNotEmpty;
-  }
 
   User? get currentUser => _auth.currentUser;
   Stream<User?> get userStream => _auth.authStateChanges();
 
-  // 1. Kirim OTP via WhatsApp
-  Future<String> sendWhatsAppOtp(String phoneNumber) async {
-    // Generate 6 digit random code
-    String otpCode = (Random().nextInt(900000) + 100000).toString();
+  /// Minta OTP dikirim ke nomor WhatsApp [phone] (format tersanitasi, 62...).
+  /// Kode OTP digenerate dan disimpan sepenuhnya di server (n8n +
+  /// koleksi Firestore otp_verifications) — method ini tidak pernah
+  /// menerima nilai OTP itu sendiri.
+  Future<void> requestOtp(String phone) async {
+    http.Response response;
+    try {
+      response = await http.post(
+        Uri.parse(ApiConfig.otpRequestUrl),
+        headers: ApiConfig.headers,
+        body: jsonEncode({'phone': phone}),
+      );
+    } catch (e) {
+      throw Exception('Gagal terhubung ke server: $e');
+    }
 
-    // Pastikan nomor berformat 62...
-    String formattedPhone = phoneNumber.replaceAll(RegExp(r'[^0-9]'), '');
-    if (formattedPhone.startsWith('0')) {
-      formattedPhone = '62${formattedPhone.substring(1)}';
+    if (response.statusCode != 200) {
+      throw Exception('Gagal mengirim OTP (${response.statusCode})');
+    }
+
+    Map<String, dynamic> data;
+    try {
+      data = jsonDecode(response.body) as Map<String, dynamic>;
+    } catch (_) {
+      throw Exception('Respons server tidak valid');
+    }
+
+    if (data['success'] != true) {
+      throw Exception(data['message'] ?? 'Gagal mengirim OTP');
+    }
+  }
+
+  /// Verifikasi [otp] untuk [phone] lewat server. Mengembalikan true hanya
+  /// jika n8n mengonfirmasi kode valid. Kalau valid, method ini juga
+  /// langsung menukar custom token dari n8n jadi sesi Firebase Auth
+  /// (signInWithCustomToken) — uid hasilnya sama dengan [phone] tersanitasi,
+  /// karena itu yang dipakai n8n saat mint token. Client tidak pernah
+  /// menyimpan atau membandingkan kode OTP asli secara lokal.
+  Future<bool> verifyOtp(String phone, String otp) async {
+    http.Response response;
+    try {
+      response = await http.post(
+        Uri.parse(ApiConfig.otpVerifyUrl),
+        headers: ApiConfig.headers,
+        body: jsonEncode({'phone': phone, 'otp': otp}),
+      );
+    } catch (e) {
+      throw Exception('Gagal terhubung ke server: $e');
+    }
+
+    if (response.statusCode != 200) {
+      throw Exception('Gagal verifikasi OTP (${response.statusCode})');
+    }
+
+    Map<String, dynamic> data;
+    try {
+      data = jsonDecode(response.body) as Map<String, dynamic>;
+    } catch (_) {
+      throw Exception('Respons server tidak valid');
+    }
+
+    if (data['success'] != true) {
+      throw Exception(data['message'] ?? 'Verifikasi gagal');
+    }
+
+    if (data['valid'] != true) {
+      return false;
+    }
+
+    final token = data['token'] as String?;
+    if (token == null || token.isEmpty) {
+      // Server bilang valid tapi gak ngasih token — jangan lanjut buat
+      // sesi. Kondisi ini seharusnya gak pernah kejadian kalau n8n sesuai
+      // kontrak (lihat catatan Track A: otp/verify wajib sertakan token
+      // begitu valid:true).
+      throw Exception('Verifikasi tidak lengkap, coba lagi');
     }
 
     try {
-      final response = await http.post(
-        Uri.parse('https://api.fonnte.com/send'),
-        headers: {'Authorization': _waApiKey},
-        body: {
-          'target': formattedPhone,
-          'message':
-              'Kode OTP Registrasi Anda adalah: $otpCode. JANGAN BERIKAN KODE INI KEPADA SIAPAPUN.',
-          'countryCode': '62',
-        },
-      );
-
-      if (response.statusCode == 200) {
-        return otpCode; // Kita return kodenya untuk diverifikasi di aplikasi
-      } else {
-        throw Exception('Gagal mengirim WhatsApp: ${response.body}');
-      }
-    } catch (e) {
-      throw Exception('Kesalahan Koneksi: $e');
+      await _auth.signInWithCustomToken(token);
+    } on FirebaseAuthException catch (e) {
+      throw Exception('Gagal membuat sesi: ${e.message}');
     }
-  }
 
-  // 2. Selesaikan Registrasi (Setelah OTP WA Benar)
-  Future<void> completeRegistration({
-    required String name,
-    required String phone,
-    required String password,
-  }) async {
-    String email = "${phone.replaceAll(RegExp(r'[^0-9]'), '')}@app.com";
-
-    UserCredential userCredential = await _auth.createUserWithEmailAndPassword(
-      email: email,
-      password: password,
-    );
-
-    // Simpan data ke Firestore
-    await _db.collection('users').doc(userCredential.user!.uid).set({
-      'name': name,
-      'phone': phone,
-      'createdAt': FieldValue.serverTimestamp(),
-      'isVerified': true,
-    });
-
-    // Simpan status login
-    await _setLoginStatus(true);
-  }
-
-  // 3. Login dengan Password
-  Future<UserCredential> loginWithPassword({
-    required String phone,
-    required String password,
-  }) async {
-    String cleanPhone = phone.replaceAll(RegExp(r'[^0-9]'), '');
-    String internalEmail = "$cleanPhone@app.com";
-
-    UserCredential credential = await _auth.signInWithEmailAndPassword(
-      email: internalEmail,
-      password: password,
-    );
-
-    // Simpan status login
-    await _setLoginStatus(true);
-    return credential;
-  }
-
-  Future<void> signOut() async {
-    await _auth.signOut();
-    // Hapus status login
-    await _setLoginStatus(false);
+    return true;
   }
 }
