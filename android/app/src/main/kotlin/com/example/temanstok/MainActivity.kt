@@ -1,4 +1,4 @@
-package com.example.cgw_hacktathon
+package com.example.temanstok
 
 import io.flutter.embedding.android.FlutterActivity
 

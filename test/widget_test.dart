@@ -1,16 +1,16 @@
 import 'package:flutter_test/flutter_test.dart';
-import 'package:cgw_hacktathon/main.dart';
+import 'package:temanstok/main.dart';
 
 void main() {
-  testWidgets('Login screen smoke test', (WidgetTester tester) async {
-    // Build our app and trigger a frame.
-    // Kita masukkan storeId: null karena kita ingin mengetes layar login
-    await tester.pumpWidget(const MyApp(storeId: null));
+  testWidgets('Landing screen smoke test', (WidgetTester tester) async {
+    // hasSession: false karena kita ingin mengetes layar landing (belum login).
+    await tester.pumpWidget(const MyApp(hasSession: false));
 
-    // Cek apakah teks 'TemanStok' ada di layar
-    expect(find.text('TemanStok'), findsOneWidget);
-    
-    // Cek apakah ada input untuk Nomor HP
-    expect(find.text('Nomor HP'), findsOneWidget);
+    // LandingScreen menampilkan logo SVG (bukan teks 'TemanStok') dan dua
+    // tombol CTA. Assertion lama ('TemanStok', 'Nomor HP') salah sasaran —
+    // 'Nomor HP' baru muncul di PhoneLoginScreen setelah tombol kedua
+    // ditekan, bukan di layar pertama. Lihat temuan M-2 di code review.
+    expect(find.text('Mulai Sekarang'), findsOneWidget);
+    expect(find.text('Sudah punya akun'), findsOneWidget);
   });
 }
