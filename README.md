@@ -21,12 +21,12 @@ TemanStok adalah aplikasi mobile Android yang dirancang khusus untuk warung, tok
 
 ## Instalasi
 
-1. Download file **TemanStok.apk**
-2. Pada perangkat Android, buka **Pengaturan → Keamanan → Izinkan instalasi dari sumber tidak dikenal**
-3. Buka file APK yang sudah didownload dan tap **"Install"**
-4. Setelah instalasi selesai, tap **"Buka"** atau cari ikon TemanStok di halaman utama perangkat
-5. Izinkan akses **mikrofon** saat diminta — diperlukan untuk fitur pencatatan via suara
-6. Daftar menggunakan nomor WhatsApp aktif dan ikuti proses onboarding
+1. Download file TemanStok.apk yang tersedia.
+2. Pada link Drive, double tap pada “TemanStok.apk” kemudian bisa pilih Install without scanning atau juga bisa pilih Install with scanning.
+3. Setelah instalasi selesai, tap **"Buka"** atau **"Open"**
+4. Izinkan akses **mikrofon** saat diminta, diperlukan untuk fitur pencatatan via suara
+5. Daftar menggunakan nomor WhatsApp aktif dan ikuti proses onboarding
+6. Setelah berhasil masuk ke aplikasi, **segera menuju laman Home dan lakukan REFRESH.**
 
 > ⚠️ **Catatan:** Setelah berhasil masuk melalui **Daftar Baru**, disarankan untuk me-refresh aplikasi dengan cara **scroll ke bawah pada halaman Home** agar data inventori tampil dengan benar.
 
