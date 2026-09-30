@@ -18,7 +18,6 @@ TemanStok adalah aplikasi mobile Android untuk warung, toko kelontong, dan UMKM 
 8. [Authentication](#authentication)
 9. [Installation (End User)](#installation-end-user)
 10. [Development Setup](#development-setup)
-11. [Known Limitations](#known-limitations)
 
 ---
 
