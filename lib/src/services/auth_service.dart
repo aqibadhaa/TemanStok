@@ -1,123 +1,106 @@
 import 'dart:convert';
-import 'dart:math';
-import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
 
-import '../config/secrets.dart';
-
 class AuthService {
-  final FirebaseAuth _auth = FirebaseAuth.instance;
   final FirebaseFirestore _db = FirebaseFirestore.instance;
 
-  // Mengambil API Key dari file terpisah yang di-ignore oleh Git
-  final String _waApiKey = AppSecrets.waApiKey; 
+  static const String _n8nBase =
+      'https://n8n-mbpw.srv1978072.hstgr.cloud/webhook/warungai';
 
-  // Simpan status login ke SharedPreferences
-  Future<void> _setLoginStatus(bool isLoggedIn) async {
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.setBool('isLoggedIn', isLoggedIn);
+  // ─── Helpers ────────────────────────────────────────────────────────────────
+
+  String sanitizePhone(String phone) {
+    phone = phone.trim().replaceAll('+', '').replaceAll('-', '').replaceAll(' ', '');
+    if (phone.startsWith('0')) {
+      phone = '62${phone.substring(1)}';
+    } else if (!phone.startsWith('62')) {
+      phone = '62$phone';
+    }
+    return phone;
   }
 
-  // Cek apakah user sudah login sebelumnya
-  Future<bool> checkLoginStatus() async {
+  Future<void> _saveSession(String storeId) async {
     final prefs = await SharedPreferences.getInstance();
-    return prefs.getBool('isLoggedIn') ?? false;
+    await prefs.setString('store_id', storeId);
   }
 
-  // 0. Cek apakah nomor sudah terdaftar di Firestore
+  Future<void> clearSession() async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.remove('store_id');
+  }
+
+  Future<String?> getSessionStoreId() async {
+    final prefs = await SharedPreferences.getInstance();
+    return prefs.getString('store_id');
+  }
+
+  // ─── Cek nomor sudah terdaftar ──────────────────────────────────────────────
+
   Future<bool> isPhoneRegistered(String phone) async {
-    final query = await _db
-        .collection('users')
-        .where('phone', isEqualTo: phone)
-        .limit(1)
-        .get();
-    return query.docs.isNotEmpty;
+    final storeId = sanitizePhone(phone);
+    final doc = await _db.collection('stores').doc(storeId).get();
+    return doc.exists;
   }
 
-  User? get currentUser => _auth.currentUser;
-  Stream<User?> get userStream => _auth.authStateChanges();
+  // ─── Kirim OTP via n8n → Fonnte → WhatsApp ──────────────────────────────────
+  // mode: 'register' | 'login'
 
-  // 1. Kirim OTP via WhatsApp
-  Future<String> sendWhatsAppOtp(String phoneNumber) async {
-    // Generate 6 digit random code
-    String otpCode = (Random().nextInt(900000) + 100000).toString();
+  Future<void> sendOtp(String phone, {String mode = 'register'}) async {
+    final storeId = sanitizePhone(phone);
 
-    // Pastikan nomor berformat 62...
-    String formattedPhone = phoneNumber.replaceAll(RegExp(r'[^0-9]'), '');
-    if (formattedPhone.startsWith('0')) {
-      formattedPhone = '62${formattedPhone.substring(1)}';
+    final response = await http.post(
+      Uri.parse('$_n8nBase/otp-send'),
+      headers: {'Content-Type': 'application/json'},
+      body: jsonEncode({
+        'phone': storeId,
+        'mode': mode,
+      }),
+    );
+
+    if (response.statusCode != 200) {
+      throw Exception('Gagal mengirim OTP: ${response.body}');
     }
 
-    try {
-      final response = await http.post(
-        Uri.parse('https://api.fonnte.com/send'),
-        headers: {'Authorization': _waApiKey},
-        body: {
-          'target': formattedPhone,
-          'message':
-              'Kode OTP Registrasi Anda adalah: $otpCode. JANGAN BERIKAN KODE INI KEPADA SIAPAPUN.',
-          'countryCode': '62',
-        },
-      );
-
-      if (response.statusCode == 200) {
-        return otpCode; // Kita return kodenya untuk diverifikasi di aplikasi
-      } else {
-        throw Exception('Gagal mengirim WhatsApp: ${response.body}');
-      }
-    } catch (e) {
-      throw Exception('Kesalahan Koneksi: $e');
+    final data = jsonDecode(response.body);
+    if (data['success'] != true) {
+      throw Exception(data['message'] ?? 'Gagal mengirim OTP');
     }
   }
 
-  // 2. Selesaikan Registrasi (Setelah OTP WA Benar)
-  Future<void> completeRegistration({
-    required String name,
-    required String phone,
-    required String password,
-  }) async {
-    String email = "${phone.replaceAll(RegExp(r'[^0-9]'), '')}@app.com";
+  // ─── Verifikasi OTP via n8n ──────────────────────────────────────────────────
 
-    UserCredential userCredential = await _auth.createUserWithEmailAndPassword(
-      email: email,
-      password: password,
+  Future<bool> verifyOtp(String phone, String otpCode) async {
+    final storeId = sanitizePhone(phone);
+
+    final response = await http.post(
+      Uri.parse('$_n8nBase/otp-verify'),
+      headers: {'Content-Type': 'application/json'},
+      body: jsonEncode({
+        'phone': storeId,
+        'otp': otpCode,
+      }),
     );
 
-    // Simpan data ke Firestore
-    await _db.collection('users').doc(userCredential.user!.uid).set({
-      'name': name,
-      'phone': phone,
-      'createdAt': FieldValue.serverTimestamp(),
-      'isVerified': true,
-    });
+    if (response.statusCode != 200) {
+      throw Exception('Gagal verifikasi OTP: ${response.body}');
+    }
 
-    // Simpan status login
-    await _setLoginStatus(true);
+    final data = jsonDecode(response.body);
+    return data['success'] == true;
   }
 
-  // 3. Login dengan Password
-  Future<UserCredential> loginWithPassword({
-    required String phone,
-    required String password,
-  }) async {
-    String cleanPhone = phone.replaceAll(RegExp(r'[^0-9]'), '');
-    String internalEmail = "$cleanPhone@app.com";
+  // ─── Selesaikan login — simpan session ──────────────────────────────────────
 
-    UserCredential credential = await _auth.signInWithEmailAndPassword(
-      email: internalEmail,
-      password: password,
-    );
-
-    // Simpan status login
-    await _setLoginStatus(true);
-    return credential;
+  Future<void> completeLogin(String phone) async {
+    final storeId = sanitizePhone(phone);
+    await _saveSession(storeId);
   }
+
+  // ─── Logout ─────────────────────────────────────────────────────────────────
 
   Future<void> signOut() async {
-    await _auth.signOut();
-    // Hapus status login
-    await _setLoginStatus(false);
+    await clearSession();
   }
 }
